@@ -6,131 +6,34 @@
     <title>Kurti Returns - Smart Scanner</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            text-align: center; 
-            background: #121212; 
-            color: white;
-            margin: 0; 
-            padding: 20px 10px; 
-        }
-        .container { 
-            max-width: 500px; 
-            margin: 0 auto; 
-        }
-        h1 { margin-top: 0; font-size: 22px; color: #ffffff; margin-bottom: 5px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; background: #121212; color: white; margin: 0; padding: 20px 10px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        h1 { margin-top: 0; font-size: 22px; margin-bottom: 15px; }
         
         /* Date Picker Styles */
-        .date-picker-box {
-            margin-bottom: 15px;
-            background: #222;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid #444;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-        .date-picker-box label {
-            font-size: 14px;
-            color: #ccc;
-        }
-        input[type="date"] {
-            background: #333;
-            color: white;
-            border: 1px solid #555;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 15px;
-            outline: none;
-            font-family: inherit;
-        }
-        input[type="date"]::-webkit-calendar-picker-indicator {
-            filter: invert(1);
-            cursor: pointer;
-        }
+        .date-picker-box { margin-bottom: 15px; background: #222; padding: 10px; border-radius: 8px; border: 1px solid #444; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        input[type="date"] { background: #333; color: white; border: 1px solid #555; padding: 8px 12px; border-radius: 6px; outline: none; font-size: 15px;}
+        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
 
-        #scanner-wrapper {
-            position: relative;
-            width: 100%;
-            border-radius: 12px;
-            overflow: hidden;
-            background: #000;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
-            border: 2px solid #333;
-            min-height: 250px;
-        }
-
+        #scanner-wrapper { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; box-shadow: 0 8px 16px rgba(0,0,0,0.5); border: 2px solid #333; min-height: 250px; }
         #reader { width: 100%; }
-
-        #laser-box {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 250px; 
-            height: 100px;
-            pointer-events: none;
-            z-index: 10;
-            display: none;
-        }
-
-        .scan-laser {
-            width: 100%;
-            height: 2px;
-            background: #ff0000;
-            box-shadow: 0 0 10px #ff0000;
-            position: absolute;
-            top: 50%;
-            animation: scan 2s infinite ease-in-out;
-        }
-
-        @keyframes scan {
-            0% { transform: translateY(-45px); }
-            50% { transform: translateY(45px); }
-            100% { transform: translateY(-45px); }
-        }
+        #laser-box { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 250px; height: 100px; pointer-events: none; z-index: 10; display: none; }
+        .scan-laser { width: 100%; height: 2px; background: #ff0000; box-shadow: 0 0 10px #ff0000; position: absolute; top: 50%; animation: scan 2s infinite ease-in-out; }
+        @keyframes scan { 0% { transform: translateY(-45px); } 50% { transform: translateY(45px); } 100% { transform: translateY(-45px); } }
         
-        #switch-lens-btn {
-            position: absolute;
-            bottom: 15px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            border: 1px solid #888;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: bold;
-            z-index: 20;
-            display: none; 
-        }
-        #switch-lens-btn:active { background: #333; }
+        #switch-lens-btn { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.7); color: white; border: 1px solid #888; padding: 8px 16px; border-radius: 20px; font-size: 14px; font-weight: bold; z-index: 20; display: none; }
         
-        #status-banner { 
-            margin-top: 20px; 
-            padding: 15px; 
-            border-radius: 8px; 
-            font-size: 16px; 
-            font-weight: 600; 
-            display: none; 
-            word-wrap: break-word;
-        }
+        #status-banner { margin-top: 20px; padding: 15px; border-radius: 8px; font-size: 16px; font-weight: 600; display: none; word-wrap: break-word; }
         .status-syncing { background: #332b00; color: #ffd700; border: 1px solid #cca100; }
         .status-success { background: #003311; color: #00ff55; border: 1px solid #00cc44; }
         .status-error { background: #330000; color: #ff3333; border: 1px solid #cc0000; }
-        
         .sku-display { font-family: monospace; font-size: 18px; padding: 4px 8px; background: rgba(255,255,255,0.1); border-radius: 4px; }
     </style>
 </head>
 <body>
-
     <div class="container">
         <h1>Returns Check-In</h1>
         
-        <!-- Date Selection Dropdown -->
         <div class="date-picker-box">
             <label for="return-date">Return Date:</label>
             <input type="date" id="return-date">
@@ -138,9 +41,7 @@
         
         <div id="scanner-wrapper">
             <div id="reader"></div>
-            <div id="laser-box">
-                <div class="scan-laser" id="laser"></div>
-            </div>
+            <div id="laser-box"><div class="scan-laser" id="laser"></div></div>
             <button id="switch-lens-btn">🔄 Switch Lens</button>
         </div>
         
@@ -148,8 +49,8 @@
     </div>
 
     <script>
-        // Aapka naya Web App URL yahan set kar diya gaya hai
-        const GOOGLE_APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzwkJ5--RgrwBgPwuRiA5pEiICQOGbNNiXawAh7V28hjGwp9TgchQ3mEmMtT__n6WhT/exec"; 
+        // NAYA URL YAHAN UPDATE HO GAYA HAI
+        const GOOGLE_APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxW7z7oglAVvA0xAelOzAd-2cQxiPfl0s6HhgczaK3_lDML6HfTpKuaM6A9ydj2S0Y/exec"; 
         
         const dateInput = document.getElementById('return-date');
         const statusBanner = document.getElementById('status-banner');
@@ -162,12 +63,9 @@
         let currentCameraIndex = 0;
         let isCameraRunning = false;
 
-        // Set default date to Today
+        // Default date = Aaj ki date
         const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-        dateInput.value = `${yyyy}-${mm}-${dd}`;
+        dateInput.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
         
         const beepSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
         const html5QrCode = new Html5Qrcode("reader");
@@ -189,10 +87,9 @@
             statusBanner.style.display = "block";
         }
 
-        function onScanSuccess(decodedText, decodedResult) {
+        function onScanSuccess(decodedText) {
             if (isScanningProcessActive) return;
             isScanningProcessActive = true;
-            
             html5QrCode.pause();
             
             laser.style.animation = "none";
@@ -201,25 +98,23 @@
 
             showStatus(`Processing: <span class="sku-display">${decodedText}</span>`, 'status-syncing');
 
-            // Format selected date from YYYY-MM-DD to DD-MM-YYYY
-            let rawDate = dateInput.value;
-            let formattedDate = rawDate.split('-').reverse().join('-');
+            // Format date correctly
+            let formattedDate = dateInput.value.split('-').reverse().join('-');
 
-            // Send SKU and Date to Google Sheet
             fetch(GOOGLE_APP_SCRIPT_URL, {
                 method: "POST",
-                mode: "no-cors", 
+                mode: "no-cors",
                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 body: `sku=${encodeURIComponent(decodedText)}&date=${encodeURIComponent(formattedDate)}`
             })
             .then(() => {
-                beepSound.play().catch(e => console.log("Audio prevented"));
+                beepSound.play().catch(()=>{});
                 showStatus(`✅ Saved: <span class="sku-display">${decodedText}</span>`, 'status-success');
-                setTimeout(() => resetScanner(), 1500);
+                setTimeout(resetScanner, 1500);
             })
-            .catch(error => {
-                showStatus(`❌ Error logging <span class="sku-display">${decodedText}</span>`, 'status-error');
-                setTimeout(() => resetScanner(), 3000);
+            .catch(() => {
+                showStatus(`❌ Error`, 'status-error');
+                setTimeout(resetScanner, 3000);
             });
         }
 
