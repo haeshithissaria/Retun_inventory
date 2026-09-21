@@ -62,7 +62,6 @@
             100% { transform: translateY(-45px); }
         }
         
-        /* 🔄 Switch Lens Button */
         #switch-lens-btn {
             position: absolute;
             bottom: 15px;
@@ -78,13 +77,12 @@
             z-index: 20;
             display: none; 
         }
-        #switch-lens-btn:active { background: #333; }
         
         #status-banner { 
-            margin-top: 20px; 
-            padding: 15px; 
+            margin-top: 15px; 
+            padding: 10px; 
             border-radius: 8px; 
-            font-size: 16px; 
+            font-size: 14px; 
             font-weight: 600; 
             display: none; 
             word-wrap: break-word;
@@ -93,7 +91,55 @@
         .status-success { background: #003311; color: #00ff55; border: 1px solid #00cc44; }
         .status-error { background: #330000; color: #ff3333; border: 1px solid #cc0000; }
         
-        .sku-display { font-family: monospace; font-size: 18px; padding: 4px 8px; background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .sku-display { font-family: monospace; font-size: 16px; padding: 2px 6px; background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+        /* 🔥 Pending List Styles 🔥 */
+        #pending-container {
+            margin-top: 20px;
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: left;
+            border: 1px solid #333;
+            display: none;
+        }
+        #pending-container h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #ffaa00;
+            display: flex;
+            justify-content: space-between;
+        }
+        #pending-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        #pending-list li {
+            background: #2a2a2a;
+            margin-bottom: 5px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid #ffaa00;
+        }
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,170,0,0.3);
+            border-radius: 50%;
+            border-top-color: #ffaa00;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .status-icon { font-size: 16px; }
     </style>
 </head>
 <body>
@@ -111,17 +157,28 @@
         </div>
         
         <div id="status-banner"></div>
+
+        <!-- Pending Items UI -->
+        <div id="pending-container">
+            <h3><span>⏳ Pending Sync</span> <span style="background:#ffaa00;color:#000;padding:2px 8px;border-radius:12px;font-size:14px;font-weight:bold;" id="pending-count">0</span></h3>
+            <ul id="pending-list"></ul>
+        </div>
     </div>
 
     <script>
-        // Naya Web App URL yahan update kar diya gaya hai
-        const GOOGLE_APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5rgltu26zU6wl4qS86M1f_QRgh42TP6kHuF3wZ3cyUpbTPmIHp4wjCH7g9GhnRt4m/exec"; 
+        const GOOGLE_APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxD92vWbUlvBAKiQ5ahPm2g4LC1EH4OuLiDTF-hXy7snC_j1bqk2TLv_PykWKMfcDtG/exec"; 
         
         const statusBanner = document.getElementById('status-banner');
         const laserBox = document.getElementById('laser-box');
         const laser = document.getElementById('laser');
         const switchBtn = document.getElementById('switch-lens-btn');
+        const pendingContainer = document.getElementById('pending-container');
+        const pendingList = document.getElementById('pending-list');
+        const pendingCount = document.getElementById('pending-count');
+        
         let isScanningProcessActive = false; 
+        let pendingScans = []; // Data Store
+        let isQueueProcessing = false; // Queue Lock
         
         let availableCameras = [];
         let currentCameraIndex = 0;
@@ -130,6 +187,129 @@
         const beepSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
         const html5QrCode = new Html5Qrcode("reader");
 
+        // --- LOCAL STORAGE (Save state if tab closed) ---
+        function saveToLocalStorage() {
+            localStorage.setItem('kurtiScans', JSON.stringify(pendingScans));
+        }
+        function loadFromLocalStorage() {
+            const saved = localStorage.getItem('kurtiScans');
+            if (saved) {
+                pendingScans = JSON.parse(saved);
+                pendingScans.forEach(item => item.status = 'pending'); 
+                renderPendingUI();
+                processQueue(); 
+            }
+        }
+
+        // --- UI RENDER FUNCTION ---
+        function renderPendingUI() {
+            if (pendingScans.length === 0) {
+                pendingContainer.style.display = "none";
+            } else {
+                pendingContainer.style.display = "block";
+                pendingCount.innerText = pendingScans.length; 
+                pendingList.innerHTML = "";
+                
+                pendingScans.forEach(item => {
+                    let li = document.createElement("li");
+                    let icon = item.status === 'syncing' ? '<span class="spinner"></span>' : '<span class="status-icon">⏳</span>';
+                    li.innerHTML = `<span>${item.sku}</span> ${icon}`;
+                    pendingList.appendChild(li);
+                });
+            }
+            saveToLocalStorage();
+        }
+
+        function showStatus(message, stateClass) {
+            statusBanner.className = stateClass;
+            statusBanner.innerHTML = message;
+            statusBanner.style.display = "block";
+        }
+
+        // --- AUTO-RETRY QUEUE SYSTEM ---
+        function processQueue() {
+            if (isQueueProcessing || pendingScans.length === 0) return;
+            
+            if (!navigator.onLine) {
+                showStatus("❌ No Internet. Waiting to retry...", "status-error");
+                return;
+            }
+
+            isQueueProcessing = true;
+            
+            const itemIndex = pendingScans.findIndex(i => i.status === 'pending');
+            if (itemIndex === -1) {
+                isQueueProcessing = false;
+                return;
+            }
+
+            const item = pendingScans[itemIndex];
+            item.status = 'syncing'; 
+            renderPendingUI();
+            
+            showStatus(`Syncing: <span class="sku-display">${item.sku}</span>`, 'status-syncing');
+
+            fetch(GOOGLE_APP_SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors", 
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: `sku=${encodeURIComponent(item.sku)}`
+            })
+            .then(() => {
+                pendingScans = pendingScans.filter(i => i.id !== item.id);
+                renderPendingUI();
+                // ❌ Beep sound yahan se hata diya gaya hai
+                showStatus(`✅ Saved: <span class="sku-display">${item.sku}</span>`, 'status-success');
+                
+                isQueueProcessing = false;
+                processQueue(); 
+            })
+            .catch(error => {
+                pendingScans[itemIndex].status = 'pending';
+                renderPendingUI();
+                showStatus(`❌ Network lost. Will auto-retry...`, 'status-error');
+                
+                isQueueProcessing = false;
+                setTimeout(processQueue, 3000); 
+            });
+        }
+
+        window.addEventListener('online', () => {
+            showStatus("🟢 Internet Restored! Syncing...", "status-syncing");
+            processQueue();
+        });
+
+        setInterval(processQueue, 5000); 
+
+        // --- SCANNER FUNCTION ---
+        function onScanSuccess(decodedText) {
+            if (isScanningProcessActive) return;
+            isScanningProcessActive = true;
+            
+            // ✅ BEEP SOUND YAHAN PLAY HOGA JAISE HI SCAN HOGA
+            beepSound.play().catch(e => console.log("Audio prevented"));
+
+            html5QrCode.pause();
+            laser.style.animation = "none";
+            laser.style.background = "#00ff00"; 
+            laser.style.boxShadow = "0 0 10px #00ff00";
+
+            // Queue me naya item add kiya
+            pendingScans.push({ id: Date.now(), sku: decodedText, status: 'pending' });
+            renderPendingUI();
+            processQueue(); 
+
+            // 0.5 sec me scanner agle kapde ke liye ready
+            setTimeout(() => {
+                laser.style.animation = "scan 2s infinite ease-in-out";
+                laser.style.background = "#ff0000";
+                laser.style.boxShadow = "0 0 10px #ff0000";
+                isScanningProcessActive = false;
+                html5QrCode.resume();
+            }, 500);
+        }
+
+        // --- CAMERA SETUP ---
         const config = { 
             fps: 10, 
             qrbox: {width: 250, height: 100}, 
@@ -140,50 +320,6 @@
                 Html5QrcodeSupportedFormats.UPC_A
             ]
         };
-
-        function showStatus(message, stateClass) {
-            statusBanner.className = stateClass;
-            statusBanner.innerHTML = message;
-            statusBanner.style.display = "block";
-        }
-
-        function onScanSuccess(decodedText, decodedResult) {
-            if (isScanningProcessActive) return;
-            isScanningProcessActive = true;
-            
-            html5QrCode.pause();
-            
-            laser.style.animation = "none";
-            laser.style.background = "#00ff00"; 
-            laser.style.boxShadow = "0 0 10px #00ff00";
-
-            showStatus(`Processing: <span class="sku-display">${decodedText}</span>`, 'status-syncing');
-
-            fetch(GOOGLE_APP_SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors", 
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: `sku=${encodeURIComponent(decodedText)}`
-            })
-            .then(() => {
-                beepSound.play().catch(e => console.log("Audio prevented"));
-                showStatus(`✅ Saved: <span class="sku-display">${decodedText}</span>`, 'status-success');
-                setTimeout(() => resetScanner(), 1500);
-            })
-            .catch(error => {
-                showStatus(`❌ Error logging <span class="sku-display">${decodedText}</span>`, 'status-error');
-                setTimeout(() => resetScanner(), 3000);
-            });
-        }
-
-        function resetScanner() {
-            statusBanner.style.display = "none";
-            laser.style.animation = "scan 2s infinite ease-in-out";
-            laser.style.background = "#ff0000";
-            laser.style.boxShadow = "0 0 10px #ff0000";
-            isScanningProcessActive = false;
-            html5QrCode.resume();
-        }
 
         function startSpecificCamera(cameraId) {
             laserBox.style.display = "none";
@@ -199,16 +335,13 @@
         Html5Qrcode.getCameras().then(devices => {
             if (devices && devices.length) {
                 availableCameras = devices.filter(c => c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('environment'));
-                
                 if (availableCameras.length === 0) availableCameras = devices;
 
                 let primaryIndex = availableCameras.findIndex(c => c.label.includes('0'));
                 currentCameraIndex = primaryIndex !== -1 ? primaryIndex : 0;
 
-                if (availableCameras.length > 1) {
-                    switchBtn.style.display = "block";
-                }
-
+                if (availableCameras.length > 1) switchBtn.style.display = "block";
+                
                 startSpecificCamera(availableCameras[currentCameraIndex].id);
             }
         }).catch(err => {
@@ -224,6 +357,10 @@
                 startSpecificCamera(availableCameras[currentCameraIndex].id);
             });
         });
+
+        // Initialize App
+        loadFromLocalStorage();
+
     </script>
 </body>
 </html>
